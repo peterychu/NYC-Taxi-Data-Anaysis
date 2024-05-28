@@ -1,65 +1,63 @@
 import apache_beam as beam
-from apache_beam.options.pipeline_options import PipelineOptions, GoogleCloudOptions, SetupOptions, StandardOptions
-from apache_beam.io import ReadFromParquet
-from apache_beam.io.gcp.bigquery import WriteToBigQuery
-import logging
 
-class TransformFactTableRow(beam.DoFn):
-    def process(self, element):
-        transformed_element = {
-            'fact_field1': element['trip_ID']
-        }
-        yield transformed_element
+def run_pipeline(project_id, bucket_name, input_path, output_table):
+  """
+  A Dataflow pipeline to read parquet files, split a field, and write to BigQuery.
 
-class TransformDimTableRow(beam.DoFn):
-    def process(self, element):
-        transformed_element = {
-            'dim_field1': element['VendorID'],
-        }
-        yield transformed_element
+  Args:
+    project_id: Your GCP project ID.
+    bucket_name: The name of the Cloud Storage bucket containing the parquet files.
+    input_path: The path to the folder containing parquet files within the bucket.
+    output_table: The destination BigQuery table (full table reference).
+  """
 
-def run(argv=None):
-    pipeline_options = PipelineOptions(flags=argv)
-    google_cloud_options = pipeline_options.view_as(GoogleCloudOptions)
-    google_cloud_options.project = 'nyc-taxi-project-423502'
-    google_cloud_options.job_name = 'dataflow_test'
-    google_cloud_options.staging_location = 'gs://dataflow_testing_pc/staging'
-    google_cloud_options.temp_location = 'gs://dataflow_testing_pc/temp'
-    pipeline_options.view_as(SetupOptions).save_main_session = True
-    pipeline_options.view_as(StandardOptions).runner = 'DataflowRunner'
+  # Define pipeline options
+  options = beam.pipeline.PipelineOptions(
+      runner='DataflowRunner',
+      project=project_id,
+      region='us-central1'  
+  )
 
-    with beam.Pipeline(options=pipeline_options) as p:
-        parquet_data = (
-            p
-            | 'ReadFromParquet' >> ReadFromParquet('gs://dataflow_testing_pc/test_data.parquet')
-        )
+  with beam.Pipeline(options=options) as p:
+    # Read parquet data
+    data = (p
+            | 'ReadParquet' >> beam.io.ReadFromParquet(
+                f'gs://{bucket_name}/{input_path}/*.parquet')
+            )
 
-        fact_table_data = (
-            parquet_data
-            | 'TransformFactTableRow' >> beam.ParDo(TransformFactTableRow())
-        )
+    # Split a string field (replace 'name_field' with your actual field name)
+    def split_name(row):
+      name_parts = row['name'].split()
+      return {
+          'first_name': name_parts[0],
+          'last_name': name_parts[1],
+          # Add other fields from your row as needed
+      }
+    split_data = data | 'SplitName' >> beam.Map(split_name)
 
-        dim_table_data = (
-            parquet_data
-            | 'TransformDimTableRow' >> beam.ParDo(TransformDimTableRow())
-        )
+    # Define BigQuery schema
+    table_schema = 'first_name:STRING,last_name:STRING' 
 
-        fact_table_data | 'WriteToFactTable' >> WriteToBigQuery(
-            'your-dataset.fact_table',
-            schema='SCHEMA_AUTODETECT',  # Replace with your schema if necessary
-            write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND,
-            create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED
-        )
+    # Write to BigQuery
+    split_data | 'WriteToBigQuery' >> beam.io.WriteToBigQuery(
+        table=output_table,
+        schema=table_schema,
+        create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED,
+        write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND
+    )
 
-        dim_table_data | 'WriteToDimTable' >> WriteToBigQuery(
-            'your-dataset.dim_table',
-            schema='SCHEMA_AUTODETECT',  # Replace with your schema if necessary
-            write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND,
-            create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED
-        )
+# Replace with your project ID, bucket name, input path and BigQuery table details
+run_pipeline('nyc-taxi-project-423502', 'pipeline_test_pc', 'data', 'pipeline_test.test_1_table')
 
-if __name__ == '__main__':
-    logging.getLogger().setLevel(logging.INFO)
-    run()
 
+
+
+
+# CMD line  that works
+# python pipeline_template.py \
+#   --project nyc-taxi-project-423502 \
+#   --region us-central1 \
+#   --staging_location gs://dataflow_testing_pc/staging \
+#   --temp_location gs://dataflow_testing_pc/temp \
+#   --runner DataflowRunner
 
