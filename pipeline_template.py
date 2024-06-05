@@ -8,14 +8,20 @@ payment_type_name_map = {1:'Credit Card', 2:'Cash', 3:'No charge',
                          4:'Dispute', 5:'Unknown',  6:'Voidedtrip'}
 
 
-datetime_dim_schema = '''index:INTEGER, tpep_pickup_datetime:DATETIME, PU_day:INTEGER, PU_month:INTEGER, 
-                             PU_year:INTEGER, tpep_dropoff_datetime:DATETIME '''
+datetime_dim_schema = '''datetime_index:INTEGER, tpep_pickup_datetime:DATETIME, PU_year:INTEGER, PU_month:INTEGER, PU_day:INTEGER,
+                        'PU_hour':INTEGER, tpep_dropoff_datetime:DATETIME, DO_year:INTEGER, DO_month:INTEGER, DO_day:INTEGER, DO_hour:INTEGER '''
 
-payment_type_dim_schema = None
-ratecode_dim_schema = None
-cost_dim_schema = None
-pickup_location_dim_schema = None
-dropoff_location_dim_schema = None
+payment_type_dim_schema = '''payment_type_ID:INTEGER, payment_type:INTEGER, payment_type_name:STRING'''
+
+ratecode_dim_schema = '''rate_code_ID:INTEGER, rate_code:INTEGER, rate_code_name:STRING'''
+
+cost_dim_schema = '''cost_ID:INTEGER, fare_amount:FLOAT, tolls_amount:FLOAT, airport_fee:FLOAT,
+                    extra:FLOAT, improvement_surcharge:FLOAT, congestion_surcharge:FLOAT,
+                    tip_amount:FLOAT, total_amount:FLOAT'''
+
+pickup_location_dim_schema = '''PU_ID:INTEGER, PU_locationID:INTEGER, PU_borough:STRING, PU_zone:STRING, PU_service_zone:STRING'''
+
+dropoff_location_dim_schema = '''DO_ID:INTEGER, DO_locationID:INTEGER, DO_borough:STRING, DO_zone:STRING, DO_service_zone:STRING'''
 
 
 
@@ -25,23 +31,26 @@ def create_datetim_dim(row):
     PU_year = tpep_pickup_datetime.year
     PU_month = tpep_pickup_datetime.month
     PU_day = tpep_pickup_datetime.day
-    #PU_hour = tpep_pickup_datetime.hour
+    PU_hour = tpep_pickup_datetime.hour
     tpep_dropoff_datetime = row['tpep_dropoff_datetime']
     DO_year = tpep_dropoff_datetime.year
     DO_month = tpep_dropoff_datetime.month
     DO_day = tpep_dropoff_datetime.day
+    DO_hour = tpep_dropoff_datetime.hour
         
         
 
     new_row = {'datetime_ID' : index,
                 'tpep_pickup_datetime' : tpep_pickup_datetime,
+                'PU_year' : PU_year,
                 'PU_day' : PU_day,
                 'PU_month' : PU_month,
-                'PU_year' : PU_year,
+                'PU_hour' : PU_hour,
                 'tpep_dropoff_datetime' : tpep_pickup_datetime,
                 'DO_year' : DO_year,
                 'DO_month' : DO_month,
-                'DO_day' : DO_day
+                'DO_day' : DO_day,
+                'DO_hour' : DO_hour
                 }
         
     return new_row 
@@ -124,7 +133,7 @@ def run_pipeline(project_id, bucket_name, input_path, output_table):
     with beam.Pipeline(options=options) as p:
     # Read parquet data
         data = (p | 'ReadParquet' >> beam.io.ReadFromParquet(f'gs://{bucket_name}/{input_path}/*.parquet'))
-        TaxiZoneLookup = (p | 'ReadParquet' >> beam.io.ReadFromCsv(f'gs://{bucket_name}/{input_path}/*.csv'))
+        #TaxiZoneLookup = (p | 'ReadParquet' >> beam.io.ReadFromCsv(f'gs://{bucket_name}/{input_path}/*.csv'))
     # split_data = data | 'SplitName' >> beam.Map(split_name)
     # Define BigQuery schema
     # table_schema = 'first_name:STRING,last_name:STRING' 
@@ -137,6 +146,8 @@ def run_pipeline(project_id, bucket_name, input_path, output_table):
         create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED,
         write_disposition=beam.io.BigQueryDisposition.WRITE_TRUNCATE
     )
+
+    
 
 
 # Replace with your project ID, bucket name, input path and BigQuery table details
